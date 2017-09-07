@@ -131,6 +131,30 @@ func ProbeTCP(ctx context.Context, target string, module config.Module, registry
 				return false
 			}
 		}
+		if qr.Starttls {
+			// TLS-upgrade
+			tlsConfig, err := pconfig.NewTLSConfig(&module.TCP.TLSConfig)
+			if err != nil {
+				log.Errorf("Error creating TLS configuration: %v", err)
+				return false
+			}
+			if tlsConfig.ServerName == "" {
+				// use target-hostname as default for tls-servername
+				targetAddress, _, _ := net.SplitHostPort(target) // succeeded in dialTCP already
+				tlsConfig.ServerName = targetAddress
+			}
+
+			tlsConn := tls.Client(conn, tlsConfig)
+			defer tlsConn.Close()
+			conn = net.Conn(tlsConn)
+			scanner = bufio.NewScanner(conn)
+
+			// get certificate expiry
+			tlsConn.Handshake()
+			state := tlsConn.ConnectionState()
+			registry.MustRegister(probeSSLEarliestCertExpiry)
+			probeSSLEarliestCertExpiry.Set(float64(getEarliestCertExpiry(&state).UnixNano()) / 1e9)
+		}
 	}
 	return true
 }
