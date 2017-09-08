@@ -17,6 +17,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"regexp"
@@ -128,6 +129,27 @@ func ProbeTCP(ctx context.Context, target string, module config.Module, registry
 		if send != "" {
 			log.Debugf("Sending %q", send)
 			if _, err := fmt.Fprintf(conn, "%s\n", send); err != nil {
+				return false
+			}
+		}
+		if qr.PSQLSSLREQ {
+			buf := make([]byte, 8)
+			binary.BigEndian.PutUint32(buf, 8)
+			binary.BigEndian.PutUint32(buf[4:], 0x04D2162F)
+			conn.Write(buf) // write SSLRequest message
+			if n, err := conn.Read(buf); err != nil {
+				log.Errorf("Error reading back psql SSLRequest reply: %v", err)
+				return false
+			} else if n != 1 {
+				log.Errorf("Error: unexpected reply size for psql SSLRequest: %d", n)
+				return false
+			} else if buf[0] == 0x4e { // 'N' - ssl not supported
+				log.Infof("psql: postgres target does not support ssl")
+				return false
+			} else if buf[0] == 0x53 { // 'S' - ssl startup confirmed
+				log.Info("psql: postgres target confirmed tls-upgrade")
+			} else {
+				log.Errorf("Error: unexpected reply psql SSLRequest: %x", buf[0])
 				return false
 			}
 		}

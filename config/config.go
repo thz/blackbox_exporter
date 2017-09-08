@@ -76,9 +76,10 @@ type HTTPProbe struct {
 }
 
 type QueryResponse struct {
-	Expect   string `yaml:"expect,omitempty"`
-	Send     string `yaml:"send,omitempty"`
-	Starttls bool   `yaml:"starttls,omitempty"`
+	Expect     string `yaml:"expect,omitempty"`
+	Send       string `yaml:"send,omitempty"`
+	Starttls   bool   `yaml:"starttls,omitempty"`
+	PSQLSSLREQ bool   `yaml:"psqlsslreq,omitempty"`
 
 	// Catches all undefined fields and must be empty after parsing.
 	XXX map[string]interface{} `yaml:",inline"`

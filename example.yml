@@ -40,6 +40,15 @@ modules:
   tcp_connect_example:
     prober: tcp
     timeout: 5s
+  psql_ssl:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      query_response:
+        - psqlsslreq: yes
+        - starttls: yes
+      tls_config:
+        insecure_skip_verify: true
   imap_starttls:
     prober: tcp
     timeout: 5s
