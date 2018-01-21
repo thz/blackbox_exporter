@@ -62,6 +62,7 @@ type HTTPProbe struct {
 	ValidStatusCodes       []int                   `yaml:"valid_status_codes,omitempty"`
 	ValidHTTPVersions      []string                `yaml:"valid_http_versions,omitempty"`
 	PreferredIPProtocol    string                  `yaml:"preferred_ip_protocol,omitempty"`
+	SourceIPAddress        string                  `yaml:"source_ip_address,omitempty"`
 	NoFollowRedirects      bool                    `yaml:"no_follow_redirects,omitempty"`
 	FailIfSSL              bool                    `yaml:"fail_if_ssl,omitempty"`
 	FailIfNotSSL           bool                    `yaml:"fail_if_not_ssl,omitempty"`

@@ -217,9 +217,22 @@ func ProbeHTTP(ctx context.Context, target string, module config.Module, registr
 		// the hostname of the target.
 		httpClientConfig.TLSConfig.ServerName = targetHost
 	}
-	client, err := pconfig.NewHTTPClientFromConfig(&httpClientConfig)
-	if err != nil {
-		level.Error(logger).Log("msg", "Error generating HTTP client", "err", err)
+
+	var client *http.Client
+	var errHttpClient error
+	if len(module.HTTP.SourceIPAddress) == 0 {
+		client, errHttpClient = pconfig.NewHTTPClientFromConfig(&httpClientConfig)
+	} else {
+		// Resolve local bind address.
+		srcip := net.ParseIP(module.HTTP.SourceIPAddress)
+		// FIXME srcip==nil check missing.
+		// currently the common code does not allow srcip specification for
+		// http client creation. this code here uses redundant code with
+		// that addition to accomplish srcip specification.
+		client, errHttpClient = NewHTTPClientWithLocalAddr(&httpClientConfig, &net.TCPAddr{IP: srcip})
+	}
+	if errHttpClient != nil {
+		level.Error(logger).Log("msg", "Error generating HTTP client", "err", errHttpClient)
 		return false
 	}
 
@@ -402,4 +415,53 @@ func ProbeHTTP(ctx context.Context, target string, module config.Module, registr
 	contentLengthGauge.Set(float64(resp.ContentLength))
 	redirectsGauge.Set(float64(redirects))
 	return
+}
+
+// NewHTTPClientWithLocalAddr wraps NewHTTPClientFromConfig from
+// github.com/prometheus/common/config/http_config.go and
+// adds the ability to specify a local address to bind the client.
+// The difference of this wrapper to the prometheus config
+// version is the specification of a DialContext for the
+// http.RoundTripper. This is currently not possible at a later
+// stage because of many possible RoundTripper wrappings.
+// Adding this to the prometheus config is an alternative
+// to this wrapper.
+func NewHTTPClientWithLocalAddr(cfg *pconfig.HTTPClientConfig, laddr *net.TCPAddr) (*http.Client, error) {
+	tlsConfig, err := pconfig.NewTLSConfig(&cfg.TLSConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	// It's the caller's job to handle timeouts
+	var rt http.RoundTripper = &http.Transport{
+		Proxy:             http.ProxyURL(cfg.ProxyURL.URL),
+		DisableKeepAlives: true,
+		TLSClientConfig:   tlsConfig,
+		DialContext: (&net.Dialer{
+			LocalAddr: laddr,
+			DualStack: true,
+		}).DialContext,
+	}
+
+	// If a bearer token is provided, create a round tripper that will set the
+	// Authorization header correctly on each request.
+	bearerToken := cfg.BearerToken
+	if len(bearerToken) == 0 && len(cfg.BearerTokenFile) > 0 {
+		b, err := ioutil.ReadFile(cfg.BearerTokenFile)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read bearer token file %s: %s", cfg.BearerTokenFile, err)
+		}
+		bearerToken = pconfig.Secret(strings.TrimSpace(string(b)))
+	}
+
+	if len(bearerToken) > 0 {
+		rt = pconfig.NewBearerAuthRoundTripper(bearerToken, rt)
+	}
+
+	if cfg.BasicAuth != nil {
+		rt = pconfig.NewBasicAuthRoundTripper(cfg.BasicAuth.Username, pconfig.Secret(cfg.BasicAuth.Password), rt)
+	}
+
+	// Return a new client with the configured round tripper.
+	return &http.Client{Transport: rt}, nil
 }
